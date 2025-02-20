@@ -1,0 +1,42 @@
+name: Sincronizar Product Backlog e Sprint Backlog
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  issues: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  sync-backlog-status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar e Atualizar Status da US
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issue = context.payload.issue;
+            const label = context.payload.label.name;
+
+            if (label === "Ready") {
+              console.log("A US foi marcada como Ready. Adicionando 'Backlog' no Sprint Backlog.");
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ["Backlog"]
+              });
+            }
+
+            if (label === "To Do") {
+              console.log("A US foi movida para 'To Do'. Alterando para 'In Progress' no Product Backlog.");
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ["In Progress"]
+              });
+            }
