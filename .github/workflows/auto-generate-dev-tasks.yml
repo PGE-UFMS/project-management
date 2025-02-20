@@ -1,24 +1,59 @@
-name: Auto Create Tasks for User Stories
+name: Auto Create Tasks for User Stories in Sprint Backlog
 
 on:
-  issues:
-    types: [opened]
+  project_card:
+    types: [moved]
 
 permissions:
   issues: write
+  projects: read
 
 jobs:
   create-tasks:
-    if: contains(github.event.issue.title, '[US]')
     runs-on: ubuntu-latest
     steps:
-      - name: Criar Tasks para a User Story
+      - name: Verificar se a US está no Sprint Backlog e com Status "Backlog"
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const issue = context.payload.issue;
-            
+            const issueNumber = context.payload.project_card.content_url.split('/').pop();
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber
+            });
+
+            // Defina o nome correto do projeto "Sprint Backlog"
+            const sprintBacklogProject = "Sprint Backlog";
+
+            // Buscar todos os projetos associados ao Issue
+            const { data: projects } = await github.rest.projects.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            const isInSprintBacklog = projects.some(project => project.name === sprintBacklogProject);
+            if (!isInSprintBacklog) {
+              console.log("A User Story não está no Sprint Backlog. Ignorando.");
+              return;
+            }
+
+            // Verifica se o Status é "Backlog"
+            const statusField = "Status";  // Nome do campo de status no GitHub Projects
+            const { data: projectFields } = await github.rest.projects.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            const status = issue.labels.map(label => label.name).find(name => name.includes(statusField));
+            if (status !== "Backlog") {
+              console.log("A User Story não está no Status 'Backlog'. Ignorando.");
+              return;
+            }
+
+            console.log("A User Story está no Sprint Backlog e no Status 'Backlog'. Criando Tasks...");
+
             // Lista de tasks automáticas categorizadas
             const tasks = [
               { title: "Definir requisitos detalhados", category: "Requisitos" },
@@ -26,9 +61,8 @@ jobs:
               { title: "Testar funcionalidade", category: "Teste manual" },
               { title: "Testar funcionalidade", category: "Teste automatizado" }
             ];
-
+            
             const createdTasks = [];
-
             for (const task of tasks) {
               const newIssue = await github.rest.issues.create({
                 owner: context.repo.owner,
@@ -38,13 +72,11 @@ jobs:
                 labels: ["task", task.category],
                 assignees: []
               });
-
               createdTasks.push(`- [ ] [#${newIssue.data.number} ${task.title} (${task.category})](${newIssue.data.html_url})`);
             }
 
             // Atualiza a User Story com a lista das Tasks criadas
             const updatedBody = `${issue.body}\n\n## 📌 Tasks Criadas Automaticamente\n${createdTasks.join("\n")}\n\n## 📌 Tasks Adicionadas Manualmente\n(Adicione novas tasks manualmente e marque aqui)`;
-
             await github.rest.issues.update({
               owner: context.repo.owner,
               repo: context.repo.repo,
