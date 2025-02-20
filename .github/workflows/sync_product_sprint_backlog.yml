@@ -1,8 +1,8 @@
-name: Sincronizar Status entre Product Backlog e Sprint Backlog
+name: Mover US para Sprint Backlog quando estiver "Ready"
 
 on:
   issues:
-    types: [edited]
+    types: [labeled]
 
 permissions:
   issues: write
@@ -10,43 +10,34 @@ permissions:
   pull-requests: write
 
 jobs:
-  sync-backlog-status:
+  move-to-sprint-backlog:
     runs-on: ubuntu-latest
     steps:
-      - name: Verificar Mudança de Status da US
+      - name: Verificar se a US foi marcada como "Ready"
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const issue = context.payload.issue;
-            const updatedField = context.payload.changes;
+            const label = context.payload.label.name;
 
-            // Verifica se o campo Status foi alterado
-            if (!updatedField || !updatedField.status) {
-              console.log("Nenhuma mudança no campo Status. Ignorando.");
-              return;
-            }
+            // Se a US foi marcada como "Ready", adicionar ao Sprint Backlog
+            if (label === "Ready") {
+              console.log("A US foi marcada como 'Ready'. Movendo para Sprint Backlog.");
 
-            const newStatus = issue.labels.map(label => label.name).find(name => ["Ready", "To Do", "In Progress"].includes(name));
-
-            // Se a US foi marcada como "Ready", mover para "Backlog" no Sprint Backlog
-            if (newStatus === "Ready") {
-              console.log("A US foi marcada como Ready. Adicionando 'Backlog' no Sprint Backlog.");
+              // Adicionar um label indicando que a US está no Sprint Backlog
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                labels: ["Backlog"]
+                labels: ["Sprint Backlog", "Backlog"]
               });
-            }
 
-            // Se a US foi marcada como "To Do" no Sprint Backlog, mover para "In Progress" no Product Backlog
-            if (newStatus === "To Do") {
-              console.log("A US foi movida para 'To Do'. Alterando para 'In Progress' no Product Backlog.");
-              await github.rest.issues.addLabels({
+              // Adicionar um comentário automático informando a movimentação
+              await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                labels: ["In Progress"]
+                body: "✅ Esta User Story foi movida automaticamente para o **Sprint Backlog** e está na coluna **Backlog**."
               });
             }
