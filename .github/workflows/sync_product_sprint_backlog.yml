@@ -1,8 +1,8 @@
-name: Sincronizar Product Backlog e Sprint Backlog
+name: Sincronizar Status entre Product Backlog e Sprint Backlog
 
 on:
   issues:
-    types: [labeled]
+    types: [edited]
 
 permissions:
   issues: write
@@ -13,15 +13,24 @@ jobs:
   sync-backlog-status:
     runs-on: ubuntu-latest
     steps:
-      - name: Verificar e Atualizar Status da US
+      - name: Verificar Mudança de Status da US
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const issue = context.payload.issue;
-            const label = context.payload.label.name;
+            const updatedField = context.payload.changes;
 
-            if (label === "Ready") {
+            // Verifica se o campo Status foi alterado
+            if (!updatedField || !updatedField.status) {
+              console.log("Nenhuma mudança no campo Status. Ignorando.");
+              return;
+            }
+
+            const newStatus = issue.labels.map(label => label.name).find(name => ["Ready", "To Do", "In Progress"].includes(name));
+
+            // Se a US foi marcada como "Ready", mover para "Backlog" no Sprint Backlog
+            if (newStatus === "Ready") {
               console.log("A US foi marcada como Ready. Adicionando 'Backlog' no Sprint Backlog.");
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
@@ -31,7 +40,8 @@ jobs:
               });
             }
 
-            if (label === "To Do") {
+            // Se a US foi marcada como "To Do" no Sprint Backlog, mover para "In Progress" no Product Backlog
+            if (newStatus === "To Do") {
               console.log("A US foi movida para 'To Do'. Alterando para 'In Progress' no Product Backlog.");
               await github.rest.issues.addLabels({
                 owner: context.repo.owner,
