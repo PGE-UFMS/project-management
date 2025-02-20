@@ -1,8 +1,10 @@
-name: Sync US to Sprint Backlog
+name: Sincronizar US entre Product Backlog e Sprint Backlog
 
 on:
-  issues:
-    types: [labeled]
+  project_card:
+    types: [moved]
+  project_item:
+    types: [edited]
 
 permissions:
   issues: write
@@ -10,55 +12,57 @@ permissions:
   pull-requests: write
 
 jobs:
-  add-to-sprint-backlog:
+  sync-backlog-status:
     runs-on: ubuntu-latest
     steps:
-      - name: Check if the US was marked as "Ready"
+      - name: Verificar Mudança no Product Backlog
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const issue = context.payload.issue;
-            const label = context.payload.label.name;
+            const issue = context.payload.project_card.content_url.split('/').pop();
+            const { data: issueData } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue
+            });
 
-            if (label !== "Ready") {
-              console.log("This is not a 'Ready' label. Exiting.");
-              return;
-            }
-
-            // Define the Sprint Backlog project name
-            const sprintProjectName = "Sprint Backlog";
-
-            // Fetch all projects for the repository
+            const statusField = "Status"; // Nome do campo de status no GitHub Projects
+            const sprintProjectName = "Sprint Backlog"; // Nome do Sprint Backlog
+            
+            // Buscar todos os projetos do repositório
             const { data: projects } = await github.rest.projects.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo
             });
 
-            // Find the project matching "Sprint Backlog"
             const sprintProject = projects.find(project => project.name === sprintProjectName);
             if (!sprintProject) {
-              console.log("Sprint Backlog project not found.");
+              console.log("Sprint Backlog não encontrado.");
               return;
             }
 
-            console.log(`Adding Issue #${issue.number} to Sprint Backlog (Project ID: ${sprintProject.id})`);
+            const currentStatus = issueData.labels.map(label => label.name).find(name => name === "Ready");
 
-            // Add the issue to the Sprint Backlog using GraphQL
-            const mutation = `
-              mutation($projectId: ID!, $contentId: ID!) {
-                addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
-                  item {
-                    id
+            if (currentStatus === "Ready") {
+              console.log("A US foi movida para Ready. Adicionando ao Sprint Backlog.");
+
+              // Adicionar a US ao Sprint Backlog via GraphQL
+              const mutation = `
+                mutation($projectId: ID!, $contentId: ID!) {
+                  addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+                    item {
+                      id
+                    }
                   }
                 }
-              }
-            `;
+              `;
 
-            const variables = {
-              projectId: sprintProject.id,
-              contentId: issue.node_id
-            };
+              const variables = {
+                projectId: sprintProject.id,
+                contentId: issueData.node_id
+              };
 
-            const response = await github.graphql(mutation, variables);
-            console.log("Successfully added to Sprint Backlog:", response);
+              const response = await github.graphql(mutation, variables);
+              console.log("✅ US adicionada ao Sprint Backlog:", response);
+            }
