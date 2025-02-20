@@ -1,0 +1,53 @@
+name: Auto Create Tasks for User Stories
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  create-tasks:
+    if: contains(github.event.issue.title, '[US]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Criar Tasks para a User Story
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issue = context.payload.issue;
+            
+            // Lista de tasks automáticas categorizadas
+            const tasks = [
+              { title: "Definir requisitos detalhados", category: "Requisitos" },
+              { title: "Implementar", category: "Desenvolvimento" },
+              { title: "Testar funcionalidade", category: "Teste manual" },
+              { title: "Testar funcionalidade", category: "Teste automatizado" }
+            ];
+
+            const createdTasks = [];
+
+            for (const task of tasks) {
+              const newIssue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `[Task - ${task.category}] ${task.title}`,
+                body: `🔗 Relacionado à [${issue.title}](${issue.html_url})\n\nCategoria: **${task.category}**`,
+                labels: ["task", task.category],
+                assignees: []
+              });
+
+              createdTasks.push(`- [ ] [#${newIssue.data.number} ${task.title} (${task.category})](${newIssue.data.html_url})`);
+            }
+
+            // Atualiza a User Story com a lista das Tasks criadas
+            const updatedBody = `${issue.body}\n\n## 📌 Tasks Criadas Automaticamente\n${createdTasks.join("\n")}\n\n## 📌 Tasks Adicionadas Manualmente\n(Adicione novas tasks manualmente e marque aqui)`;
+
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: updatedBody
+            });
