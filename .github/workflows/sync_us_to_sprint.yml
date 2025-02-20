@@ -1,9 +1,7 @@
-name: Sincronizar US entre Product Backlog e Sprint Backlog
+name: Mover US para Sprint Backlog quando estiver "Ready"
 
 on:
-  project_card:
-    types: [moved]
-  project_item:
+  issues:
     types: [edited]
 
 permissions:
@@ -12,57 +10,42 @@ permissions:
   pull-requests: write
 
 jobs:
-  sync-backlog-status:
+  add-to-sprint-backlog:
     runs-on: ubuntu-latest
     steps:
-      - name: Verificar Mudança no Product Backlog
+      - name: Verificar Mudança de Status da US
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const issue = context.payload.project_card.content_url.split('/').pop();
-            const { data: issueData } = await github.rest.issues.get({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issue
-            });
+            const issue = context.payload.issue;
+            const updatedField = context.payload.changes;
 
-            const statusField = "Status"; // Nome do campo de status no GitHub Projects
-            const sprintProjectName = "Sprint Backlog"; // Nome do Sprint Backlog
-            
-            // Buscar todos os projetos do repositório
-            const { data: projects } = await github.rest.projects.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo
-            });
-
-            const sprintProject = projects.find(project => project.name === sprintProjectName);
-            if (!sprintProject) {
-              console.log("Sprint Backlog não encontrado.");
+            // Verifica se o campo Status foi alterado
+            if (!updatedField || !updatedField.title) {
+              console.log("Nenhuma mudança relevante no Status. Ignorando.");
               return;
             }
 
-            const currentStatus = issueData.labels.map(label => label.name).find(name => name === "Ready");
+            // Buscar o novo Status da US
+            const newStatus = issue.labels.map(label => label.name).find(name => name === "Ready");
 
-            if (currentStatus === "Ready") {
+            if (newStatus === "Ready") {
               console.log("A US foi movida para Ready. Adicionando ao Sprint Backlog.");
 
-              // Adicionar a US ao Sprint Backlog via GraphQL
-              const mutation = `
-                mutation($projectId: ID!, $contentId: ID!) {
-                  addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
-                    item {
-                      id
-                    }
-                  }
-                }
-              `;
+              // Adicionar um label "Sprint Backlog" para facilitar o rastreamento
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ["Sprint Backlog"]
+              });
 
-              const variables = {
-                projectId: sprintProject.id,
-                contentId: issueData.node_id
-              };
-
-              const response = await github.graphql(mutation, variables);
-              console.log("✅ US adicionada ao Sprint Backlog:", response);
+              // Criar um comentário confirmando a ação
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: "✅ Esta User Story foi movida automaticamente para o **Sprint Backlog**."
+              });
             }
