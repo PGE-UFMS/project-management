@@ -1,4 +1,4 @@
-name: Adicionar US ao Sprint Backlog quando estiver "Ready"
+name: Sync US to Sprint Backlog
 
 on:
   issues:
@@ -8,13 +8,12 @@ permissions:
   issues: write
   contents: read
   pull-requests: write
-  project: write
 
 jobs:
   add-to-sprint-backlog:
     runs-on: ubuntu-latest
     steps:
-      - name: Verificar se a US foi marcada como "Ready"
+      - name: Check if the US was marked as "Ready"
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -22,28 +21,44 @@ jobs:
             const issue = context.payload.issue;
             const label = context.payload.label.name;
 
-            if (label === "Ready") {
-              console.log("A US foi marcada como 'Ready'. Adicionando ao Sprint Backlog.");
-
-              // Obter todos os projetos da organização ou repositório
-              const { data: projects } = await github.rest.projects.listForRepo({
-                owner: context.repo.owner,
-                repo: context.repo.repo
-              });
-
-              // Encontrar o ID do projeto "Sprint Backlog"
-              const sprintProject = projects.find(project => project.name === "Sprint Backlog");
-              if (!sprintProject) {
-                console.log("Sprint Backlog não encontrado.");
-                return;
-              }
-
-              // Adicionar a Issue ao Sprint Backlog
-              await github.rest.projects.createCard({
-                column_id: sprintProject.id,
-                content_id: issue.id,
-                content_type: "Issue"
-              });
-
-              console.log(`✅ US adicionada ao Sprint Backlog (Project ID: ${sprintProject.id})`);
+            if (label !== "Ready") {
+              console.log("This is not a 'Ready' label. Exiting.");
+              return;
             }
+
+            // Define the Sprint Backlog project name
+            const sprintProjectName = "Sprint Backlog";
+
+            // Fetch all projects for the repository
+            const { data: projects } = await github.rest.projects.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            // Find the project matching "Sprint Backlog"
+            const sprintProject = projects.find(project => project.name === sprintProjectName);
+            if (!sprintProject) {
+              console.log("Sprint Backlog project not found.");
+              return;
+            }
+
+            console.log(`Adding Issue #${issue.number} to Sprint Backlog (Project ID: ${sprintProject.id})`);
+
+            // Add the issue to the Sprint Backlog using GraphQL
+            const mutation = `
+              mutation($projectId: ID!, $contentId: ID!) {
+                addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
+                  item {
+                    id
+                  }
+                }
+              }
+            `;
+
+            const variables = {
+              projectId: sprintProject.id,
+              contentId: issue.node_id
+            };
+
+            const response = await github.graphql(mutation, variables);
+            console.log("Successfully added to Sprint Backlog:", response);
