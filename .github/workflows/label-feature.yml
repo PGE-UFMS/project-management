@@ -1,0 +1,16 @@
+name: Auto-label Issues by Type
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  add-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Add 'type: task' label"
+        if: ${{ contains(github.event.issue.title, '[TASK]') }}
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          labels: "type: task"
