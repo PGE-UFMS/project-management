@@ -14,7 +14,7 @@ jobs:
           github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           script: |
             const projectNumber = 1; // Número do projeto
-            const org = "sua-organizacao-ou-usuario"; // Altere para seu org/user
+            const org = ${{ secrets.ORG_NAME }}
 
             const issueId = context.payload.issue.node_id;
 
