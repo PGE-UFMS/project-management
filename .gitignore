@@ -1,0 +1,17 @@
+# Arquivo de variáveis de ambiente
+.env
+
+# Checkpoints de notebooks
+.ipynb_checkpoints/
+
+# Arquivos temporários do sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos do Python
+__pycache__/
+*.pyc
+
+# Arquivos de saída ou dados locais
+*.csv
+*.xlsx
