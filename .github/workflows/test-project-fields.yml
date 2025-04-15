@@ -1,0 +1,56 @@
+name: Test Project Fields
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List project fields
+        uses: actions/github-script@v7
+        env:
+          ORG_NAME: ${{ secrets.ORG_NAME }}
+        with:
+          github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          script: |
+            const org = process.env.ORG_NAME;
+            const projectNumber = 2; // Product Backlog
+
+            const query = `
+              query {
+                organization(login: "${org}") {
+                  projectV2(number: ${projectNumber}) {
+                    id
+                    title
+                    fields(first: 100) {
+                      nodes {
+                        __typename
+                        ... on ProjectV2FieldCommon {
+                          id
+                          name
+                        }
+                        ... on ProjectV2SingleSelectField {
+                          options {
+                            id
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const result = await github.graphql(query);
+
+            console.log(`\n🧩 Projeto: ${result.organization.projectV2.title}`);
+            result.organization.projectV2.fields.nodes.forEach(field => {
+              console.log(`• Campo: ${field.name} [${field.__typename}]`);
+              if (field.options) {
+                field.options.forEach(opt => {
+                  console.log(`   - Opção: ${opt.name} (ID: ${opt.id})`);
+                });
+              }
+            });
