@@ -19,6 +19,7 @@ jobs:
             const projectNumber = 2; // Product Backlog
             const issueId = context.payload.issue.node_id;
 
+            // 1. Buscar informações do projeto
             const projectQuery = `
               query {
                 organization(login: "${org}") {
@@ -41,6 +42,7 @@ jobs:
             const project = result.organization.projectV2;
             const statusField = project.fields.nodes.find(f => f.name === "Status");
 
+            // 2. Adicionar a issue ao projeto
             const addItemMutation = `
               mutation($projectId: ID!, $contentId: ID!) {
                 addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
@@ -58,6 +60,10 @@ jobs:
 
             const itemId = itemResult.addProjectV2ItemById.item.id;
 
+            // 3. Esperar alguns segundos para garantir que os campos estejam prontos
+            await new Promise(resolve => setTimeout(resolve, 3000));
+
+            // 4. Definir o status como "Product Backlog" (ID já conhecido)
             const setStatusMutation = `
               mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
                 updateProjectV2ItemFieldValue(input: {
@@ -79,5 +85,5 @@ jobs:
               projectId: project.id,
               itemId,
               fieldId: statusField.id,
-              optionId: "f75ad846" // ID de "Product Backlog"
+              optionId: "f75ad846" // ID da opção "Product Backlog"
             });
