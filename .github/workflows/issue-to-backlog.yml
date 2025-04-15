@@ -10,12 +10,13 @@ jobs:
     steps:
       - name: Set status in GitHub Project
         uses: actions/github-script@v7
+        env:
+          ORG_NAME: ${{ secrets.ORG_NAME }}
         with:
           github-token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           script: |
-            const projectNumber = 1; // Número do projeto
-            const org = ${{ secrets.ORG_NAME }}
-
+            const org = process.env.ORG_NAME;
+            const projectNumber = 2; // Product Backlog
             const issueId = context.payload.issue.node_id;
 
             const projectQuery = `
@@ -29,12 +30,6 @@ jobs:
                           id
                           name
                         }
-                        ... on ProjectV2SingleSelectField {
-                          options {
-                            id
-                            name
-                          }
-                        }
                       }
                     }
                   }
@@ -43,10 +38,8 @@ jobs:
             `;
 
             const result = await github.graphql(projectQuery);
-
             const project = result.organization.projectV2;
             const statusField = project.fields.nodes.find(f => f.name === "Status");
-            const statusOption = statusField.options.find(o => o.name === "Product Backlog");
 
             const addItemMutation = `
               mutation($projectId: ID!, $contentId: ID!) {
@@ -86,5 +79,5 @@ jobs:
               projectId: project.id,
               itemId,
               fieldId: statusField.id,
-              optionId: statusOption.id
+              optionId: "f75ad846" // ID de "Product Backlog"
             });
