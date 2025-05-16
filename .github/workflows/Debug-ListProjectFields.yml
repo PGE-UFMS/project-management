@@ -1,0 +1,155 @@
+name: Debug - List Project Fields
+
+on:
+  workflow_dispatch: # acionado manualmente
+
+jobs:
+  list-fields:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+
+    steps:
+      - name: Run GraphQL to list project fields
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MY_PAT }}
+          script: |
+            const projectNumber = 2;
+            const org = "OESNPG";
+            const repoName = "project-management";
+
+            // 1. Listar campos do projeto via GraphQL
+            const query = `
+              query($org: String!, $number: Int!) {
+                organization(login: $org) {
+                  projectV2(number: $number) {
+                    fields(first: 100) {
+                      nodes {
+                        __typename
+                        ... on ProjectV2FieldCommon {
+                          id
+                          name
+                        }
+                        ... on ProjectV2SingleSelectField {
+                          id
+                          name
+                          options {
+                            id
+                            name
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const result = await github.graphql(query, {
+              org,
+              number: projectNumber
+            });
+
+            console.log("🧩 Campos personalizados do projeto:");
+            result.organization.projectV2.fields.nodes.forEach(f => {
+              console.log(`- [${f.__typename}] ${f.name} → ID: ${f.id}`);
+              if (f.options) {
+                f.options.forEach(o => {
+                  console.log(`  - Option: ${o.name} → ID: ${o.id}`);
+                });
+              }
+            });
+
+            // 2. Listar campos nativos de issues via REST API
+            console.log("\n🔍 Campos nativos de issues:");
+            
+            try {
+              // Obter uma issue existente para verificar os campos disponíveis
+              const issues = await github.rest.issues.listForRepo({
+                owner: org,
+                repo: repoName,
+                per_page: 1
+              });
+              
+              if (issues.data.length > 0) {
+                const issue = issues.data[0];
+                console.log(`Exemplo de issue #${issue.number}:`);
+                
+                // Listar propriedades nativas da issue
+                console.log("Campos nativos disponíveis:");
+                const nativeFields = [
+                  "title", "body", "assignees", "labels", "milestone", 
+                  "state", "locked", "comments", "created_at", "updated_at"
+                ];
+                
+                nativeFields.forEach(field => {
+                  console.log(`- ${field}: ${issue[field] !== undefined ? "disponível" : "não disponível"}`);
+                });
+                
+                // Verificar se há campo Type nas labels
+                if (issue.labels && issue.labels.length > 0) {
+                  console.log("\nLabels da issue (possível fonte do campo Type):");
+                  issue.labels.forEach(label => {
+                    console.log(`- ${label.name}`);
+                  });
+                }
+                
+                // Verificar se há campos adicionais via API
+                console.log("\nVerificando campos adicionais via API...");
+                
+                // Tentar obter informações sobre o campo Type
+                try {
+                  const repoLabels = await github.rest.issues.listLabelsForRepo({
+                    owner: org,
+                    repo: repoName
+                  });
+                  
+                  console.log("\nLabels disponíveis no repositório:");
+                  const typeLabels = repoLabels.data.filter(label => 
+                    label.name.startsWith("Type:") || 
+                    label.name === "Bug" || 
+                    label.name === "Epic" || 
+                    label.name === "Feature" || 
+                    label.name === "Task"
+                  );
+                  
+                  if (typeLabels.length > 0) {
+                    console.log("Labels relacionadas a Type encontradas:");
+                    typeLabels.forEach(label => {
+                      console.log(`- ${label.name} → ID: ${label.id}`);
+                    });
+                  } else {
+                    console.log("Nenhuma label relacionada a Type encontrada.");
+                  }
+                } catch (error) {
+                  console.log("Erro ao buscar labels:", error.message);
+                }
+              } else {
+                console.log("Nenhuma issue encontrada para análise.");
+              }
+            } catch (error) {
+              console.log("Erro ao buscar issues:", error.message);
+            }
+            
+            // 3. Verificar se há API específica para o campo Type
+            console.log("\n🔎 Verificando APIs específicas para o campo Type:");
+            try {
+              // Verificar se há endpoint específico para o campo Type
+              const repoDetails = await github.rest.repos.get({
+                owner: org,
+                repo: repoName
+              });
+              
+              console.log("Detalhes do repositório:");
+              console.log(`- Nome: ${repoDetails.data.name}`);
+              console.log(`- Tem issues: ${repoDetails.data.has_issues}`);
+              console.log(`- Tem projetos: ${repoDetails.data.has_projects}`);
+              
+              // Verificar configurações do repositório que possam conter o campo Type
+              console.log("\nVerificando configurações adicionais do repositório...");
+              
+            } catch (error) {
+              console.log("Erro ao buscar detalhes do repositório:", error.message);
+            }

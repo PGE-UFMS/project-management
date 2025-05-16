@@ -1,0 +1,140 @@
+name: Set Dates on Status Change
+
+on:
+  schedule:
+    - cron: '0 8,20 * * *'  # Executa às 8h e 20h UTC todos os dias
+  workflow_dispatch:  # Permite execução manual
+
+jobs:
+  update-dates:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - name: Busca e Atualiza Datas em Issues
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MY_PAT }}
+          script: |
+            const PROJECT_ID = "PVT_kwDODA-DZc4A1Ng5";
+            const FIELD_ID_STATUS = "PVTSSF_lADODA-DZc4A1Ng5zgqt934";
+            const FIELD_ID_FINISH_DATE = "PVTF_lADODA-DZc4A1Ng5zgqu6Tg";
+            const FIELD_ID_START_DATE = "PVTF_lADODA-DZc4A1Ng5zguAp9I";
+            const OPTION_ID_DONE = "98236657";
+            const OPTION_ID_IN_PROGRESS = "47fc9ee4";
+            const OPTION_ID_REVIEW = "b802aeb9";
+
+            // Consulta corrigida para evitar seleções diretas em unions
+            const response = await github.graphql(`
+              query($projectId: ID!) {
+                node(id: $projectId) {
+                  ... on ProjectV2 {
+                    items(first: 100) {
+                      nodes {
+                        id
+                        content {
+                          __typename
+                          ... on Issue {
+                            id
+                            number
+                          }
+                        }
+                        fieldValues(first: 20) {
+                          nodes {
+                            __typename
+                            ... on ProjectV2ItemFieldSingleSelectValue {
+                              field {
+                                ... on ProjectV2FieldCommon {
+                                  id
+                                  name
+                                }
+                              }
+                              optionId
+                              name
+                            }
+                            ... on ProjectV2ItemFieldDateValue {
+                              field {
+                                ... on ProjectV2FieldCommon {
+                                  id
+                                  name
+                                }
+                              }
+                              date
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `, { projectId: PROJECT_ID });
+
+            const today = new Date().toISOString().split("T")[0];
+            let updatedItems = 0;
+
+            // Processa todas as issues do projeto
+            for (const item of response.node.items.nodes) {
+              if (!item.content) continue;
+              
+              const status = item.fieldValues.nodes.find(
+                f => f.__typename === "ProjectV2ItemFieldSingleSelectValue" && 
+                     f.field?.id === FIELD_ID_STATUS
+              );
+              
+              const finishDate = item.fieldValues.nodes.find(
+                f => f.__typename === "ProjectV2ItemFieldDateValue" && 
+                     f.field?.id === FIELD_ID_FINISH_DATE
+              );
+              
+              const startDate = item.fieldValues.nodes.find(
+                f => f.__typename === "ProjectV2ItemFieldDateValue" && 
+                     f.field?.id === FIELD_ID_START_DATE
+              );
+
+              // Verifica se o status é "In Progress" ou "Review" e se não há data inicial definida
+              if ((status?.optionId === OPTION_ID_IN_PROGRESS || status?.optionId === OPTION_ID_REVIEW) && !startDate?.date) {
+                console.log(`✅ Definindo Start Date para ${today} (issue #${item.content?.number || "?"}) - Status: ${status?.name}`);
+
+                await github.graphql(`
+                  mutation($input: UpdateProjectV2ItemFieldValueInput!) {
+                    updateProjectV2ItemFieldValue(input: $input) {
+                      projectV2Item { id }
+                    }
+                  }
+                `, {
+                  input: {
+                    projectId: PROJECT_ID,
+                    itemId: item.id,
+                    fieldId: FIELD_ID_START_DATE,
+                    value: { date: today }
+                  }
+                });
+                updatedItems++;
+              }
+
+              // Verifica se o status é "Done" e se não há data final definida
+              if (status?.optionId === OPTION_ID_DONE && !finishDate?.date) {
+                console.log(`✅ Definindo End Date para ${today} (issue #${item.content?.number || "?"})`);
+
+                await github.graphql(`
+                  mutation($input: UpdateProjectV2ItemFieldValueInput!) {
+                    updateProjectV2ItemFieldValue(input: $input) {
+                      projectV2Item { id }
+                    }
+                  }
+                `, {
+                  input: {
+                    projectId: PROJECT_ID,
+                    itemId: item.id,
+                    fieldId: FIELD_ID_FINISH_DATE,
+                    value: { date: today }
+                  }
+                });
+                updatedItems++;
+              }
+            }
+            
+            console.log(`🔄 Verificação concluída. ${updatedItems} issues atualizadas.`);
